@@ -46,7 +46,7 @@ object FfmpegCommandBuilder {
         args += when {
             target.family == FormatFamily.AUDIO &&
                 (source.family == FormatFamily.AUDIO || source.family == FormatFamily.VIDEO) -> audioArgs(target, options)
-            source.family == FormatFamily.VIDEO && target == FileFormat.GIF -> gifArgs(options)
+            source.family == FormatFamily.VIDEO && target == FileFormat.GIF -> gifArgs(options, probe)
             source.family == FormatFamily.VIDEO && target.family == FormatFamily.VIDEO ->
                 videoArgs(target, options, probe, trimmed = range != null)
             source.family == FormatFamily.IMAGE && target.family == FormatFamily.IMAGE -> imageArgs(target, options, probe)
@@ -67,7 +67,7 @@ object FfmpegCommandBuilder {
             val start = (o.trimStartMs ?: 0L).coerceAtLeast(0L)
             var end = o.trimEndMs ?: (start + DEFAULT_GIF_MS)
             end = minOf(end, start + ConversionOptions.MAX_GIF_RANGE_MS)
-            probe.durationMs?.let { end = minOf(end, it) }
+            probe.durationMs?.takeIf { it > 0 }?.let { end = minOf(end, it) }
             if (end <= start) throw ConversionError.EngineFailed("The GIF range is empty. Pick an end time after the start time.")
             return TrimRange(start, end)
         }
@@ -102,11 +102,15 @@ object FfmpegCommandBuilder {
         if (target == FileFormat.M4A) addAll(listOf("-movflags", "+faststart"))
     }
 
-    private fun gifArgs(o: ConversionOptions): List<String> = listOf(
-        "-vf", "fps=${o.gifFps},scale=${o.gifWidth}:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse",
-        "-loop", "0",
-        "-an",
-    )
+    private fun gifArgs(o: ConversionOptions, probe: MediaProbe): List<String> {
+        // fps= needs a timeline: a zero-length clip (e.g. a one-frame screen recording) would produce no frames.
+        val fps = if ((probe.durationMs ?: 0L) > 0L) "fps=${o.gifFps}," else ""
+        return listOf(
+            "-vf", "${fps}scale=${o.gifWidth}:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse",
+            "-loop", "0",
+            "-an",
+        )
+    }
 
     private val COPY_VIDEO_CODECS = mapOf(
         FileFormat.MP4 to setOf("h264", "hevc", "mpeg4", "av1"),

@@ -153,6 +153,19 @@ class FfmpegCommandBuilderTest {
         assertContainsSequence(args, listOf("-t", "3.000"))
     }
 
+    @Test fun `gif from a clip without a usable duration skips the fps filter`() {
+        // A screen recording of a static screen can be a single frame with zero duration; fps= emits nothing for it.
+        val args = build(FileFormat.MP4, FileFormat.GIF, probe = h264Probe.copy(durationMs = null)).args
+        assertContainsSequence(args, listOf("-vf", "scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse"))
+        assertFalse(args.any { it.startsWith("fps=") })
+    }
+
+    @Test fun `gif from a clip reported as zero seconds still converts`() {
+        val args = build(FileFormat.MP4, FileFormat.GIF, probe = h264Probe.copy(durationMs = 0)).args
+        assertContainsSequence(args, listOf("-t", "5.000"))
+        assertFalse(args.any { it.startsWith("fps=") })
+    }
+
     @Test fun `tiff to jpg at best quality`() {
         val command = build(FileFormat.TIFF, FileFormat.JPG, ConversionOptions(imageQuality = 100), MediaProbe(width = 800, height = 600))
         assertEquals(prefix + listOf("-i", "in.tiff", "-frames:v", "1", "-q:v", "2", "out.jpg"), command.args)
