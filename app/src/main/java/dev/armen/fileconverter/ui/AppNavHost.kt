@@ -12,6 +12,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import dev.armen.fileconverter.di.AppContainer
+import dev.armen.fileconverter.ui.convert.ConvertScreen
+import dev.armen.fileconverter.ui.convert.ConvertViewModel
 import dev.armen.fileconverter.ui.home.HomeScreen
 import dev.armen.fileconverter.ui.home.HomeViewModel
 import dev.armen.fileconverter.ui.settings.SettingsScreen
@@ -41,7 +43,17 @@ fun AppNavHost(container: AppContainer, shareSignal: Int) {
             SettingsScreen(viewModel, onBack = { navController.popBackStack() })
         }
         // Replaced in Task 15 (Convert) and Task 16 (Progress, Result).
-        composable(Routes.CONVERT) { PlaceholderScreen("Convert") }
+        composable(Routes.CONVERT) {
+            val viewModel = viewModel {
+                ConvertViewModel(container.selection, container.settings, container.inputResolver, container.scheduler, container.queueDir())
+            }
+            ConvertScreen(
+                viewModel = viewModel,
+                onBack = { navController.popBackStack() },
+                onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                onBatchStarted = { tag -> navController.navigate(Routes.progress(tag)) },
+            )
+        }
         composable(Routes.PROGRESS) { PlaceholderScreen("Progress") }
         composable(Routes.RESULT) { PlaceholderScreen("Result") }
     }
