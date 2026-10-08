@@ -1,17 +1,17 @@
 package dev.armen.fileconverter.ui
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import dev.armen.fileconverter.di.AppContainer
+import dev.armen.fileconverter.ui.batch.BatchViewModel
+import dev.armen.fileconverter.ui.batch.ProgressScreen
+import dev.armen.fileconverter.ui.batch.ResultScreen
 import dev.armen.fileconverter.ui.convert.ConvertScreen
 import dev.armen.fileconverter.ui.convert.ConvertViewModel
 import dev.armen.fileconverter.ui.home.HomeScreen
@@ -42,7 +42,6 @@ fun AppNavHost(container: AppContainer, shareSignal: Int) {
             val viewModel = viewModel { SettingsViewModel(container.settings, container::cloudClient, container.history) }
             SettingsScreen(viewModel, onBack = { navController.popBackStack() })
         }
-        // Replaced in Task 15 (Convert) and Task 16 (Progress, Result).
         composable(Routes.CONVERT) {
             val viewModel = viewModel {
                 ConvertViewModel(container.selection, container.settings, container.inputResolver, container.scheduler, container.queueDir())
@@ -54,12 +53,27 @@ fun AppNavHost(container: AppContainer, shareSignal: Int) {
                 onBatchStarted = { tag -> navController.navigate(Routes.progress(tag)) },
             )
         }
-        composable(Routes.PROGRESS) { PlaceholderScreen("Progress") }
-        composable(Routes.RESULT) { PlaceholderScreen("Result") }
+        val batchArguments = listOf(navArgument(Routes.BATCH_ARG) { type = NavType.StringType })
+        composable(Routes.PROGRESS, arguments = batchArguments) { entry ->
+            val tag = entry.arguments?.getString(Routes.BATCH_ARG).orEmpty()
+            val viewModel = viewModel(key = "progress-$tag") { BatchViewModel(tag, container.scheduler, container.queueDir()) }
+            ProgressScreen(
+                viewModel = viewModel,
+                onFinished = {
+                    navController.navigate(Routes.result(tag)) { popUpTo(Routes.PROGRESS) { inclusive = true } }
+                },
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(Routes.RESULT, arguments = batchArguments) { entry ->
+            val tag = entry.arguments?.getString(Routes.BATCH_ARG).orEmpty()
+            val viewModel = viewModel(key = "result-$tag") { BatchViewModel(tag, container.scheduler, container.queueDir()) }
+            ResultScreen(
+                viewModel = viewModel,
+                onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                onRetry = { navController.popBackStack(Routes.CONVERT, inclusive = false) },
+                onDone = { navController.popBackStack(Routes.HOME, inclusive = false) },
+            )
+        }
     }
-}
-
-@Composable
-private fun PlaceholderScreen(name: String) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("$name screen") }
 }
