@@ -19,12 +19,21 @@ import dev.armen.fileconverter.ui.home.HomeViewModel
 import dev.armen.fileconverter.ui.settings.SettingsScreen
 import dev.armen.fileconverter.ui.settings.SettingsViewModel
 
-/** [shareSignal] increases each time files are shared into the app; it opens the Convert screen. */
+/** A request to show a batch, e.g. from a notification tap. [id] changes for every request so repeats are honoured. */
+data class OpenBatchRequest(val batchTag: String, val id: Int)
+
+/**
+ * [shareSignal] increases each time files are shared into the app; it opens the Convert screen.
+ * [openBatch] opens the Progress screen of a batch (which moves on to Result when the batch is finished).
+ */
 @Composable
-fun AppNavHost(container: AppContainer, shareSignal: Int) {
+fun AppNavHost(container: AppContainer, shareSignal: Int, openBatch: OpenBatchRequest? = null) {
     val navController = rememberNavController()
     LaunchedEffect(shareSignal) {
         if (shareSignal > 0) navController.navigate(Routes.CONVERT) { launchSingleTop = true }
+    }
+    LaunchedEffect(openBatch) {
+        openBatch?.let { navController.navigate(Routes.progress(it.batchTag)) }
     }
     NavHost(navController = navController, startDestination = Routes.HOME) {
         composable(Routes.HOME) {

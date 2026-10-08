@@ -39,22 +39,23 @@ class ConversionWorker(context: Context, params: WorkerParameters) : CoroutineWo
         } else {
             "${request.inputs.first().displayName} → ${request.target.label}"
         }
+        val batchTag = tags.firstOrNull { it.startsWith(ConversionScheduler.batchTag("")) } ?: ConversionScheduler.batchTag(id.toString())
         val workDir = File(applicationContext.cacheDir, "conversions/$id")
-        report(container, title, STAGE_WAITING, 0f)
+        report(container, batchTag, title, STAGE_WAITING, 0f)
 
         return ConversionLock.mutex.withLock {
             coroutineScope {
                 val progress = MutableStateFlow(0f)
                 val reporter = launch {
                     progress.collect { p ->
-                        report(container, title, STAGE_CONVERTING, p)
+                        report(container, batchTag, title, STAGE_CONVERTING, p)
                         delay(PROGRESS_INTERVAL_MS) // StateFlow conflates updates in the meantime
                     }
                 }
                 try {
                     val result = container.runner().run(request, request.inputs.map { File(it.path) }, workDir) { progress.value = it }
                     reporter.cancel()
-                    report(container, title, STAGE_SAVING, 1f)
+                    report(container, batchTag, title, STAGE_SAVING, 1f)
                     val subfolder = if (result.outputs.size > 1) FileNames.baseName(request.inputs.first().displayName) else null
                     val saved = result.outputs.map { container.outputStore.save(it, request.target.mimeType, subfolder) }
                     saved.forEach { recordHistory(container, request, it) }
@@ -64,7 +65,9 @@ class ConversionWorker(context: Context, params: WorkerParameters) : CoroutineWo
                     throw e
                 } catch (e: Throwable) {
                     deleteInputs(request, requestFile)
-                    Result.success(errorData(ErrorMapper.map(e)))
+                    val error = ErrorMapper.map(e)
+                    container.notifications.notifyFailed(batchTag, title, error.message ?: "Conversion failed.")
+                    Result.success(errorData(error))
                 } finally {
                     reporter.cancel()
                     workDir.deleteRecursively()
@@ -73,10 +76,10 @@ class ConversionWorker(context: Context, params: WorkerParameters) : CoroutineWo
         }
     }
 
-    private suspend fun report(container: AppContainer, title: String, stage: String, progress: Float) {
+    private suspend fun report(container: AppContainer, batchTag: String, title: String, stage: String, progress: Float) {
         setProgress(workDataOf(KEY_PROGRESS to progress, KEY_STAGE to stage))
         try {
-            setForeground(container.notifications.foregroundInfo(id, title, stage, progress))
+            setForeground(container.notifications.foregroundInfo(batchTag, id, title, stage, progress))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
