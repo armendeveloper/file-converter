@@ -30,7 +30,7 @@ internal fun escapeXml(text: String): String = buildString(text.length) {
             ch == '>' -> append("&gt;")
             ch == '"' -> append("&quot;")
             ch == '\t' || ch == '\n' || ch == '\r' -> append(ch)
-            ch < ' ' || ch == '￾' || ch == '￿' -> Unit
+            ch < ' ' || ch == '\uFFFE' || ch == '\uFFFF' -> Unit
             else -> append(ch)
         }
     }

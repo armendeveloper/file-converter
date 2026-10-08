@@ -18,7 +18,7 @@ class CsvCodecTest {
 
     @Test fun `handles CRLF`() = assertEquals(listOf(listOf("a"), listOf("b")), CsvCodec.parse("a\r\nb\r\n"))
 
-    @Test fun `strips a byte order mark`() = assertEquals(listOf(listOf("id")), CsvCodec.parse("﻿id"))
+    @Test fun `strips a byte order mark`() = assertEquals(listOf(listOf("id")), CsvCodec.parse("\uFEFFid"))
 
     @Test fun `detects semicolons and prefers them on ties`() {
         assertEquals(';', CsvCodec.detectDelimiter("a;b;c\n1;2;3"))

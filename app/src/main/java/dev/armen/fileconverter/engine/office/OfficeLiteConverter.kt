@@ -58,7 +58,7 @@ class OfficeLiteConverter(
         val names = csvNames(task.baseName, sheets.map { it.name })
         return sheets.zip(names).map { (sheet, name) ->
             // BOM so Excel opens the UTF-8 file with the right encoding.
-            File(task.outputDir, name).apply { writeText("﻿" + CsvCodec.write(sheet.rows), Charsets.UTF_8) }
+            File(task.outputDir, name).apply { writeText("\uFEFF" + CsvCodec.write(sheet.rows), Charsets.UTF_8) }
         }
     }
 

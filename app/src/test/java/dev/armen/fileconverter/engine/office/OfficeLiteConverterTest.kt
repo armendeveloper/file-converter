@@ -30,8 +30,8 @@ class OfficeLiteConverterTest {
         val outputs = run(tmp.newFile("in.xlsx").also(::writeExcelFixture), FileFormat.XLSX, FileFormat.CSV)
         assertEquals(listOf("book-People.csv", "book-Q&A.csv"), outputs.map { it.name })
         val first = outputs[0].readText(Charsets.UTF_8)
-        assertTrue(first.startsWith("﻿Name,Joined,Score\r\nAnn Lee,2024-01-15,98.5\r\n"))
-        assertEquals("﻿x,7\r\n", outputs[1].readText(Charsets.UTF_8))
+        assertTrue(first.startsWith("\uFEFFName,Joined,Score\r\nAnn Lee,2024-01-15,98.5\r\n"))
+        assertEquals("\uFEFFx,7\r\n", outputs[1].readText(Charsets.UTF_8))
         assertEquals(1f, progress.last())
     }
 
@@ -39,7 +39,7 @@ class OfficeLiteConverterTest {
         val xlsx = tmp.newFile("in.xlsx").also { XlsxWriter().write(listOf(listOf("a", "b"), listOf("1", "2")), it) }
         val output = run(xlsx, FileFormat.XLSX, FileFormat.CSV).single()
         assertEquals("book.csv", output.name)
-        assertEquals("﻿a,b\r\n1,2\r\n", output.readText(Charsets.UTF_8))
+        assertEquals("\uFEFFa,b\r\n1,2\r\n", output.readText(Charsets.UTF_8))
     }
 
     @Test fun `utf-16 semicolon csv becomes xlsx`() {

@@ -6,13 +6,13 @@ object CsvCodec {
     private val CANDIDATES = listOf(';', '\t', ',')
 
     fun detectDelimiter(text: String): Char {
-        val record = firstRecord(text.removePrefix("﻿"))
+        val record = firstRecord(text.removePrefix("\uFEFF"))
         val best = CANDIDATES.maxBy { countOutsideQuotes(record, it) }
         return if (countOutsideQuotes(record, best) == 0) ',' else best
     }
 
     fun parse(text: String, delimiter: Char = detectDelimiter(text)): List<List<String>> {
-        val s = text.removePrefix("﻿")
+        val s = text.removePrefix("\uFEFF")
         val rows = mutableListOf<List<String>>()
         var row = mutableListOf<String>()
         val field = StringBuilder()
