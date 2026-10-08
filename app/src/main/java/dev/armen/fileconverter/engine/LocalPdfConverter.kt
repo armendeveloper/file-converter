@@ -2,9 +2,6 @@ package dev.armen.fileconverter.engine
 
 import android.graphics.Bitmap
 import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.RectF
-import android.graphics.pdf.PdfDocument
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import dev.armen.fileconverter.domain.ConversionError
@@ -19,6 +16,10 @@ import java.io.File
 import java.io.IOException
 import kotlin.math.max
 import kotlin.math.roundToInt
+import android.graphics.Canvas
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import java.io.ByteArrayOutputStream
 
 /** Images -> one PDF, PDF -> PNG/JPG pages, TXT -> PDF. All on device. */
 class LocalPdfConverter : Converter {
@@ -39,36 +40,41 @@ class LocalPdfConverter : Converter {
             }
         }
 
-    private fun imagesToPdf(task: ConversionTask, onProgress: (Float) -> Unit): File {
+    /** Streams one JPEG page per image, so memory holds a single bitmap no matter how many images. */
+    private suspend fun imagesToPdf(task: ConversionTask, onProgress: (Float) -> Unit): File {
         val out = File(task.outputDir, FileNames.withExtension(task.baseName, FileFormat.PDF))
-        val document = PdfDocument()
-        val paint = Paint(Paint.FILTER_BITMAP_FLAG)
-        try {
-            task.inputs.forEachIndexed { index, file ->
-                val bitmap = BitmapLoader.load(file, PDF_IMAGE_MAX_DIMENSION)
-                    ?: throw ConversionError.UnreadableInput(FormatRegistry.detect(file.name, null))
-                val landscape = bitmap.width > bitmap.height
-                val pageWidth = if (landscape) TextPdfWriter.PAGE_HEIGHT else TextPdfWriter.PAGE_WIDTH
-                val pageHeight = if (landscape) TextPdfWriter.PAGE_WIDTH else TextPdfWriter.PAGE_HEIGHT
-                val scale = minOf(
-                    (pageWidth - 2 * IMAGE_MARGIN).toFloat() / bitmap.width,
-                    (pageHeight - 2 * IMAGE_MARGIN).toFloat() / bitmap.height,
-                )
-                val width = bitmap.width * scale
-                val height = bitmap.height * scale
-                val left = (pageWidth - width) / 2f
-                val top = (pageHeight - height) / 2f
-                val page = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, index + 1).create())
-                page.canvas.drawBitmap(bitmap, null, RectF(left, top, left + width, top + height), paint)
-                document.finishPage(page)
-                onProgress((index + 1f) / task.inputs.size * 0.95f)
+        out.outputStream().use { stream ->
+            JpegPdfWriter(stream).use { writer ->
+                task.inputs.forEachIndexed { index, file ->
+                    currentCoroutineContext().ensureActive()
+                    val decoded = BitmapLoader.load(file, PDF_IMAGE_MAX_DIMENSION)
+                        ?: throw ConversionError.UnreadableInput(FormatRegistry.detect(file.name, null))
+                    val bitmap = if (decoded.hasAlpha()) flattenOnWhite(decoded) else decoded
+                    val jpeg = ByteArrayOutputStream().use { buffer ->
+                        bitmap.compress(Bitmap.CompressFormat.JPEG, PDF_JPEG_QUALITY, buffer)
+                        buffer.toByteArray()
+                    }
+                    val landscape = bitmap.width > bitmap.height
+                    val pageWidth = if (landscape) TextPdfWriter.PAGE_HEIGHT else TextPdfWriter.PAGE_WIDTH
+                    val pageHeight = if (landscape) TextPdfWriter.PAGE_WIDTH else TextPdfWriter.PAGE_HEIGHT
+                    writer.addPage(jpeg, bitmap.width, bitmap.height, pageWidth, pageHeight, IMAGE_MARGIN)
+                    if (bitmap !== decoded) bitmap.recycle()
+                    decoded.recycle()
+                    onProgress((index + 1f) / task.inputs.size * 0.95f)
+                }
             }
-            out.outputStream().buffered().use { document.writeTo(it) }
-        } finally {
-            document.close()
         }
         onProgress(1f)
         return out
+    }
+
+    private fun flattenOnWhite(bitmap: Bitmap): Bitmap {
+        val flat = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
+        Canvas(flat).apply {
+            drawColor(Color.WHITE)
+            drawBitmap(bitmap, 0f, 0f, null)
+        }
+        return flat
     }
 
     private fun pdfToImages(task: ConversionTask, onProgress: (Float) -> Unit): List<File> {
@@ -117,6 +123,7 @@ class LocalPdfConverter : Converter {
 
     private companion object {
         const val PDF_IMAGE_MAX_DIMENSION = 2000
+        const val PDF_JPEG_QUALITY = 85
         const val IMAGE_MARGIN = 24
         const val RENDER_DPI = 150
         const val MAX_RENDER_DIMENSION = 4096

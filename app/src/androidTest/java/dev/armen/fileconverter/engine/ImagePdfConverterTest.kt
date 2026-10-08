@@ -97,6 +97,18 @@ class ImagePdfConverterTest {
         assertEquals(2, pageCount(pdf))
     }
 
+    @Test fun mergesManyLargePhotosIntoOneCompactPdf() {
+        val pixels = IntArray(3000 * 2000) { kotlin.random.Random(it).nextInt() or (0xFF shl 24) }
+        val bitmap = android.graphics.Bitmap.createBitmap(pixels, 3000, 2000, android.graphics.Bitmap.Config.ARGB_8888)
+        val photo = File(dir, "photo.jpg").apply { outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, it) } }
+        bitmap.recycle()
+        val pages = 40
+        val pdf = run(LocalPdfConverter(), List(pages) { photo }, FileFormat.JPG, FileFormat.PDF).single()
+        assertEquals(pages, pageCount(pdf))
+        // Pages must be stored as JPEG, not as raw pixels: no bigger than the photos themselves.
+        assertTrue("PDF is ${pdf.length()} bytes for $pages photos of ${photo.length()} bytes", pdf.length() < pages * photo.length())
+    }
+
     @Test fun pdfPagesBecomeNumberedImages() {
         val outputs = run(LocalPdfConverter(), listOf(makePdf(3)), FileFormat.PDF, FileFormat.PNG)
         assertEquals(listOf("result-1.png", "result-2.png", "result-3.png"), outputs.map { it.name })
